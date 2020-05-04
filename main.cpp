@@ -12,103 +12,32 @@ typedef complex<ComplexCoeff> Complex;
 const Complex I(0, 1);
 const unsigned int n = 4096;  //Number of samples
 
-// FUNCTIONS RELATED TO ITERATIVE FFT
-unsigned int bitReverse(unsigned int numToReverse){
-    static unsigned int bits = log2(n);
-    unsigned int reverseNum = 0;
 
-    for(unsigned int i = 0; i <= bits; i++){
-        unsigned int temp = (numToReverse & (1 << i));
-        if(temp)
-            reverseNum |= (1 << ((bits - 1) - i));
-    }
+unsigned int bitReverse(unsigned int);
+void readInput(string);
+void writeOutput(string, Complex *);
+void printComplex(Complex);
+void printComplexArray(Complex *, unsigned int);
 
-    return reverseNum;
-}
-
-
-Complex * bitReverseArray(Complex * arr, unsigned int size){
-    Complex * y = new Complex[size];
-
-    for(unsigned int i = 0; i < size; i++){
-        y[i] = arr[bitReverse(i)];
-    }
-
-    return y;
-}
-
-
-void printComplex(Complex num){
-    cout << num.real() << "+" << num.imag() << "i";
-}
-
-
-void printComplexArray(Complex * arr, unsigned int size){
-    cout << "[";
-    for(int i = 0; i < size; i++){
-        printComplex(arr[i]);
-        cout << ", ";
-    }
-    cout << "]" << endl;
-}
 
 Complex input[n];
 
-// MAIN
-int main(int argc, char * argv[]){
 
-    int id;
-    int processes;
+void fft(Complex * y, Complex * output, Complex * receive){
 
-    MPI_Init(&argc, &argv);
+    int id, processes;
     MPI_Comm_rank(MPI_COMM_WORLD, &id);
     MPI_Comm_size(MPI_COMM_WORLD, &processes);
-
     int chunk = n / processes;
-    Complex * y = new Complex[chunk];
-    Complex * output = nullptr;
 
-    // INPUT
-    ifstream file("data/inputs/input_" + string(argv[1]) + ".txt");
-    string line = "";
-
-    if(id == 0) {
-        int i = 0;
-        while (getline(file, line) && i < n) {
-
-            string delimiter = ", ";
-            int pos = line.find(delimiter);
-
-            string string_real = line.substr(0, pos);
-            string string_imag = line.substr(pos + delimiter.length(), line.length());
-
-            ComplexCoeff real = atof(string_real.c_str());
-            ComplexCoeff imag = atof(string_imag.c_str());
-
-            input[i++] = Complex(real, imag);
-
-        }
-
-        file.close();
-    }
-
-    MPI_Bcast(input, n, MY_MPI_COMPLEX, 0, MPI_COMM_WORLD);
-
-    // Time test
-    double start, end;
-    MPI_Barrier(MPI_COMM_WORLD);
-    start = MPI_Wtime();
-
-    // PART 1
-    // Each process get its part of the input (indexes are bitwise reversed)
+    // PART 1 // Each process get its part of the input (indexes are bitwise reversed)
     for(int i = 0; i < chunk; i++){
         y[i] = input[bitReverse(id * chunk + i)];
     }
 
-    // PART 2
+    // PART 2 // All needed data in single process
     int data_involved = 2;
 
-    // All needed data in single process
     for(int j = 0; j < log2(n) - log2(processes); j++){
 
         for(int i = 0; i < chunk; i += data_involved){
@@ -134,10 +63,8 @@ int main(int argc, char * argv[]){
     int distance = 1;
     int groups = processes / 2;
     int group_size = 2;
-    Complex * receive = new Complex[chunk];
 
-    // PART 3
-    // Communication between processes needed
+    // PART 3 // Communication between processes needed
     for(int j = log2(n) - log2(processes); j < log2(n); j++){
 
         int receive_id;
@@ -152,13 +79,12 @@ int main(int argc, char * argv[]){
             receive_id = id - distance;
         }
 
-        MPI_Sendrecv(y, chunk, MY_MPI_COMPLEX, receive_id, 0, receive, chunk, MY_MPI_COMPLEX, receive_id, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        MPI_Sendrecv(y, chunk, MY_MPI_COMPLEX, receive_id, 0, receive, chunk,
+                MY_MPI_COMPLEX, receive_id, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
         int d = 2 << j;
         Complex w = Complex (1, 0);
         Complex wd = exp(I * Complex (-2 * M_PI / d, 0));
-
-
         int which_one = id % (group_size/2);
 
         for(int i = 0; i < chunk * which_one; i++)
@@ -185,37 +111,172 @@ int main(int argc, char * argv[]){
         distance *= 2;
         groups /= 2;
         group_size *= 2;
-
     }
 
-    // Print result
-    if(id == 0){
-        output = new Complex[n];
-    }
-
-    MPI_Barrier(MPI_COMM_WORLD);
     MPI_Gather(y, chunk, MY_MPI_COMPLEX, output + id * chunk, chunk, MY_MPI_COMPLEX, 0, MPI_COMM_WORLD);
+}
 
-    end = MPI_Wtime();
 
-    if(id == 0){
-        cout << "Runtime = " << end - start << endl;
+// MAIN
+#ifndef TEST
+int main(int argc, char * argv[]){
+    int id;
+    int processes;
 
-        ofstream file;
-        file.open ("data/actual_outputs/actual_output_" + string(argv[1]) + ".txt");
+    MPI_Init(&argc, &argv);
+    MPI_Comm_rank(MPI_COMM_WORLD, &id);
+    MPI_Comm_size(MPI_COMM_WORLD, &processes);
 
-        for(int i = 0; i < n; i++) {
-            file << output[i].real() << ", " << output[i].imag() << endl;
-        }
+    int chunk = n / processes;
+    Complex * y = new Complex[chunk];
+    Complex * output = new Complex[n];
+    Complex * receive = new Complex[chunk];
 
-        file.close();
+    string input_file = argv[1];
+    string output_file = argv[2];
+
+    // INPUT
+    if (id == 0) {
+        readInput(input_file);
+    }
+    MPI_Bcast(input, n, MY_MPI_COMPLEX, 0, MPI_COMM_WORLD);
+
+    fft(y, output, receive);
+
+    // OUTPUT
+    if (id == 0) {
+        writeOutput(output_file, output);
     }
 
     MPI_Finalize();
     delete[] y;
-    delete[] receive;
     delete[] output;
+    delete[] receive;
 
     return 0;
 }
+#endif
 
+#ifdef TEST
+int main(int argc, char * argv[]){
+    int id;
+    int processes;
+
+    MPI_Init(&argc, &argv);
+    MPI_Comm_rank(MPI_COMM_WORLD, &id);
+    MPI_Comm_size(MPI_COMM_WORLD, &processes);
+
+    int chunk = n / processes;
+    Complex * y = new Complex[chunk];
+    Complex * output = new Complex[n];
+    Complex * receive = new Complex[chunk];
+
+    string times_file = "data/mpi_times_n" + to_string(processes) + ".txt";
+
+    if(id == 0){
+        ofstream file;
+        file.open(times_file, ofstream::out | ofstream::trunc);
+        file.close();
+    }
+
+    for(int num = 0; num < 100; num++) {
+        string input_file = "data/inputs/input_" + to_string(num) + ".txt";
+        string output_file = "data/actual_outputs/actual_output_" + to_string(num) + ".txt";
+
+        // INPUT
+        if (id == 0) {
+            readInput(input_file);
+        }
+        MPI_Bcast(input, n, MY_MPI_COMPLEX, 0, MPI_COMM_WORLD);
+
+        // Time test
+        double start, end;
+        MPI_Barrier(MPI_COMM_WORLD);
+        start = MPI_Wtime();
+
+        fft(y, output, receive);
+
+        end = MPI_Wtime();
+        double runtime = end - start;
+
+        // OUTPUT
+        if (id == 0) {
+            writeOutput(output_file, output);
+            ofstream file;
+            file.open(times_file, ios_base::app);
+            file << "Runtime = " << runtime << endl;
+            file.close();
+        }
+    }
+
+    MPI_Finalize();
+    delete[] y;
+    delete[] output;
+    delete[] receive;
+
+    return 0;
+}
+#endif
+
+// FUNCTIONS RELATED TO ITERATIVE FFT
+unsigned int bitReverse(unsigned int numToReverse){
+    static unsigned int bits = log2(n);
+    unsigned int reverseNum = 0;
+
+    for(unsigned int i = 0; i <= bits; i++){
+        unsigned int temp = (numToReverse & (1 << i));
+        if(temp)
+            reverseNum |= (1 << ((bits - 1) - i));
+    }
+
+    return reverseNum;
+}
+
+
+void readInput(string input_file){
+    ifstream file(input_file);
+    string line = "";
+    int i = 0;
+
+    while (getline(file, line) && i < n) {
+        string delimiter = ", ";
+        int pos = line.find(delimiter);
+
+        string string_real = line.substr(0, pos);
+        string string_imag = line.substr(pos + delimiter.length(), line.length());
+
+        ComplexCoeff real = atof(string_real.c_str());
+        ComplexCoeff imag = atof(string_imag.c_str());
+
+        input[i++] = Complex(real, imag);
+    }
+
+    file.close();
+}
+
+
+void writeOutput(string output_file, Complex * output){
+    ofstream file;
+    file.open(output_file);
+
+    for (int i = 0; i < n; i++) {
+        file << output[i].real() << ", " << output[i].imag() << endl;
+    }
+
+    file.close();
+}
+
+
+void printComplex(Complex num){
+    cout << num.real() << "+" << num.imag() << "i";
+}
+
+
+void printComplexArray(Complex * arr, unsigned int size){
+    cout << "[";
+    for(int i = 0; i < size; i++){
+        printComplex(arr[i]);
+        cout << ", ";
+    }
+    cout << "]" << endl;
+}

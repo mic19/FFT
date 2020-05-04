@@ -24,14 +24,10 @@ unsigned int bitReverse(unsigned int numToReverse){
 }
 
 
-Complex * bitReverseArray(Complex * arr, unsigned int size){
-    Complex * y = new Complex[size];
-
+void bitReverseArray(Complex * arr, Complex * y, unsigned int size){
     for(unsigned int i = 0; i < size; i++){
         y[i] = arr[bitReverse(i)];
     }
-
-    return y;
 }
 
 
@@ -50,33 +46,8 @@ void printComplexArray(Complex * arr, unsigned int size){
 }
 
 
-int main(int argc, char * argv[]){
-
-    auto start = std::chrono::high_resolution_clock::now();
-
-    Complex * arr = new Complex[n];
-    ifstream file("data/inputs/input_"  + string(argv[1]) + ".txt");
-    string line = "";
-
-    int i = 0;
-    while (getline(file, line) && i < n){
-
-        string delimiter = ", ";
-        int pos = line.find(delimiter);
-
-        string string_real = line.substr(0, pos);
-        string string_imag = line.substr(pos + delimiter.length(), line.length());
-
-        ComplexCoeff real = atof(string_real.c_str());
-        ComplexCoeff imag = atof(string_imag.c_str());
-
-        arr[i++] = Complex(real, imag);
-
-    }
-
-    file.close();
-
-    Complex * y = bitReverseArray(arr, n);
+void fft(Complex * arr, Complex * y){
+    bitReverseArray(arr, y, n);
 
     for (unsigned int j = 1; j <= log2(n); j++) {
         int d = 1 << j;
@@ -95,23 +66,121 @@ int main(int argc, char * argv[]){
             w *= wm;
         }
     }
+}
 
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = end - start;
-    cout << "Runtime = " << elapsed.count() << endl;
+
+// MAIN
+#ifndef TEST
+int main(int argc, char * argv[]){
+
+    Complex * arr = new Complex[n];
+    Complex  * y = new Complex[n];
+
+    string input_file = argv[1];
+    string output_file = argv[2];
+
+    ifstream file(input_file);
+    string line = "";
+
+    int i = 0;
+    while (getline(file, line) && i < n) {
+        string delimiter = ", ";
+        int pos = line.find(delimiter);
+
+        string string_real = line.substr(0, pos);
+        string string_imag = line.substr(pos + delimiter.length(), line.length());
+
+        ComplexCoeff real = atof(string_real.c_str());
+        ComplexCoeff imag = atof(string_imag.c_str());
+
+        arr[i++] = Complex(real, imag);
+    }
+
+    file.close();
+
+    fft(arr, y);
 
     ofstream file_output;
-    file_output.open ("data/serial_outputs/serial_output_" + string(argv[1]) + ".txt");
+    file_output.open(output_file);
 
     for(int i = 0; i < n; i++) {
         file_output << y[i].real() << ", " << y[i].imag() << endl;
     }
+
     file_output.close();
 
     delete[] arr;
-    delete[] y;
+    delete [] y;
 
     return 0;
 }
 
+#endif
+#ifdef TEST
+int main(int argc, char * argv[]){
+
+    Complex * arr = new Complex[n];
+    Complex  * y = new Complex[n];
+    string times_file = "data/serial_times.txt";
+
+    ofstream file;
+    file.open(times_file, ofstream::out | ofstream::trunc);
+    file.close();
+
+    for(int num = 0; num < 100; num++) {
+        string input_file = "data/inputs/input_" + to_string(num) + ".txt";
+        string output_file = "data/serial_outputs/serial_output_" + to_string(num) + ".txt";
+
+        ifstream file(input_file);
+        string line = "";
+
+        int i = 0;
+        while (getline(file, line) && i < n) {
+
+            string delimiter = ", ";
+            int pos = line.find(delimiter);
+
+            string string_real = line.substr(0, pos);
+            string string_imag = line.substr(pos + delimiter.length(), line.length());
+
+            ComplexCoeff real = atof(string_real.c_str());
+            ComplexCoeff imag = atof(string_imag.c_str());
+
+            arr[i++] = Complex(real, imag);
+
+        }
+
+        file.close();
+
+        // START
+        auto start = std::chrono::high_resolution_clock::now();
+
+        fft(arr, y);
+
+        // END
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> elapsed = end - start;
+        auto runtime = elapsed.count();
+
+        ofstream file_times;
+        file_times.open(times_file, ios_base::app);
+        file_times << "Runtime = " << runtime << endl;
+        file_times.close();
+
+        ofstream file_output;
+        file_output.open(output_file);
+
+        for (int i = 0; i < n; i++) {
+            file_output << y[i].real() << ", " << y[i].imag() << endl;
+        }
+
+        file_output.close();
+    }
+
+    delete[] arr;
+    delete [] y;
+
+    return 0;
+}
+#endif
 
