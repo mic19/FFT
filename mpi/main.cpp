@@ -87,8 +87,7 @@ void fft(Complex * y, Complex * output, Complex * receive){
         Complex wd = exp(I * Complex (-2 * M_PI / d, 0));
         int which_one = id % (group_size/2);
 
-        for(int i = 0; i < chunk * which_one; i++)
-            w *= wd;
+	w *= pow(wd, chunk * which_one);
 
         if(id < middle) {
             for (int k = 0; k < chunk; k++) {

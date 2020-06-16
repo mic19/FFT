@@ -15,6 +15,6 @@ serial_test:
 serial_run_test: serial_test generate_cases
 	./serial.out
 generate_cases:
-	python3 generate_cases.py
+	python3 ../generate_cases.py
 clean:
 	rm -fR a.out serial.out data example/actual_output.txt example/serial_output.txt
