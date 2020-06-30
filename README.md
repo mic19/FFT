@@ -1,7 +1,8 @@
 
+
 ## Fast Fourier Transform
 
-Fast Fourier Transform parallel algorithm in 2 technologies as a part of Parallel Systems lab classes. 
+Fast Fourier Transform parallel algorithm in 3 technologies as a part of Parallel Systems lab classes. 
 
 **MPI - OpenMPI in C++**  
 Image below shows runtime for different number of processes on 8-core processor. When number of processes exceeds the number of cores, runtime increases. Serial algorithm runtime (main_serial.cpp) for comparison. 
@@ -21,4 +22,20 @@ and
     all_data_real[MYTHREAD] = upc_alloc(chunk * sizeof(ComplexCoeff));
     
 The same happens for imaginary part of complex numbers. 
+
+**STL**  
+FFT algorithm is split into separate tasks represented by *fftTask* function. Each task is executed in a single thread. These threads are stored in *thread_array* in order to be joined with the main thread after algorithm is done. 
+
+    for(int i = 0; i < threads - 1; ++i){  
+	    threads_array.emplace_back(fftTask, std::ref(arr), threads, i);  
+	}
+	fftTask(std::ref(arr), threads, threads - 1);  
+
+Below it is shown how these threads are joined.
+
+    for(std::thread & t : threads_array){  
+    if(t.joinable())  
+        t.join();  
+	}  
+
 
